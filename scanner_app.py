@@ -1,7 +1,6 @@
 import concurrent.futures
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
 
 from method1 import run_method_1
@@ -14,7 +13,7 @@ if "selected_ticker" not in st.session_state:
     st.session_state.selected_ticker = "AAPL"
 
 st.title("🤖 3-in-1 Master AI Swingtrade Scanner")
-st.caption("Eén overzicht met gecombineerde AI & ML scores uit alle 3 de analyseresults.")
+st.caption("Eén overzicht met gecombineerde AI & ML scores uit alle 3 de analysemethodes.")
 
 st.sidebar.header("⚙️ Scanner Instellingen")
 default_watchlist = "AAPL, NVDA, TSLA, AMD, PLTR, MSFT, HOOD, AMZN, GOOGL, META"
@@ -88,13 +87,50 @@ if "scan_results_df" in st.session_state:
         "M1 Score", "M2 Score", "M3 Score", 
         "M1 ML Kans", "M2 ML Prob", "M3 Ensemble", "M3 LSTM Δ"
     ]].copy()
-    
-    st.dataframe(display_df, use_container_width=True)
+
+    # Functie om de rijen van de tabel een groene/rode/oranje achtergrond te geven
+    def highlight_signal(row):
+        sig = row["Signaal"]
+        if "BULLISH" in sig:
+            return ['background-color: rgba(46, 125, 50, 0.25); color: inherit;'] * len(row)
+        elif "BEARISH" in sig:
+            return ['background-color: rgba(198, 40, 40, 0.25); color: inherit;'] * len(row)
+        else:
+            return ['background-color: rgba(239, 108, 0, 0.15); color: inherit;'] * len(row)
+
+    styled_df = display_df.style.apply(highlight_signal, axis=1)
+    st.dataframe(styled_df, use_container_width=True)
 
     st.markdown("---")
     st.markdown("### 🔍 Interactieve Card View")
 
+    # Styling voor de losse kaarten
     for idx, row in scan_df.iterrows():
+        sig = row["Signaal"]
+        
+        # Bepaal de achtergrondkleur en rand op basis van Bullish/Bearish
+        if "BULLISH" in sig:
+            bg_color = "rgba(46, 125, 50, 0.15)"
+            border_color = "#2e7d32"
+        elif "BEARISH" in sig:
+            bg_color = "rgba(198, 40, 40, 0.15)"
+            border_color = "#c62828"
+        else:
+            bg_color = "rgba(239, 108, 0, 0.10)"
+            border_color = "#ef6c00"
+
+        # Container met gekleurde achtergrond
+        card_html = f"""
+        <div style="
+            background-color: {bg_color};
+            border-left: 6px solid {border_color};
+            border-radius: 8px;
+            padding: 10px 15px;
+            margin-bottom: 10px;
+        ">
+        """
+        st.markdown(card_html, unsafe_allow_html=True)
+
         col_t, col_sig, col_m1, col_m2, col_m3, col_mast, col_act = st.columns([1.0, 1.2, 1.2, 1.2, 1.2, 1.2, 1.3])
 
         col_t.markdown(f"**{row['Ticker']}**<br><small>${row['Koers']}</small>", unsafe_allow_html=True)
@@ -108,7 +144,7 @@ if "scan_results_df" in st.session_state:
             st.session_state.selected_ticker = row["Ticker"]
             st.rerun()
 
-        st.markdown("<hr style='margin: 4px 0px; border-top: 1px solid #eee;'>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
 st.markdown("---")
 ticker = st.session_state.selected_ticker
