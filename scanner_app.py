@@ -40,11 +40,11 @@ def run_full_combined_scan(ticker):
         "Koers": m1_res["Koers"],
         "Master AI Score": master_score,
         "Signaal": signal,
-        "M1 Score": m1_score_norm,
-        "M2 Score": m2_score,
-        "M3 Score": m3_score,
-        "M1 ML Kans": m1_res["M1_ML_Kans"],
-        "M2 ML Prob": m2_res["M2_ML_Prob"] if m2_res else "N/A",
+        "AI-TA-Score": m1_score_norm,
+        "SST Score": m2_score,
+        "AI Combi Score": m3_score,
+        "AI-TA Kans": m1_res["M1_ML_Kans"],
+        "SST Kans": m2_res["M2_ML_Prob"] if m2_res else "N/A",
         "M3 Ensemble": m3_res["Ensemble_Prob"] if m3_res else "N/A",
         "M3 LSTM Δ": m3_res["LSTM_Change_Pct"] if m3_res else "N/A",
         "Support": m1_res["Support"],
@@ -77,7 +77,7 @@ if scan_btn or "scan_results_df" not in st.session_state:
             df_res = pd.DataFrame(results).sort_values(by="Master AI Score", ascending=False).reset_index(drop=True)
             st.session_state.scan_results_df = df_res
 
-# Helper voor het omzetten van %-strings ("58.2%") of floats naar getallen (0-100)
+# Helper om percentages te parsen naar getallen (0-100)
 def parse_pct_value(val):
     try:
         if isinstance(val, str):
@@ -105,19 +105,19 @@ def get_prob_badge(val_str, label=""):
 
     return f'<span style="background-color:{bg}; color:#ffffff; padding: 2px 6px; border-radius: 4px; font-weight: bold;">{label}: {val_str}</span>'
 
-# Badge voor Card View op basis van score (groen vanaf 6.0)
-def get_score_badge(score, label_prefix=""):
+# Badge voor Card View op basis van score (SST Score heeft drempel van > 6.9)
+def get_score_badge(score, label_prefix="", min_green=6.0):
     try:
         val = float(score)
     except (ValueError, TypeError):
         val = 5.0
 
-    if val >= 6.0:
-        bg = "#2e7d32"
-    elif val <= 4.4:
-        bg = "#c62828"
+    if val >= min_green:
+        bg = "#2e7d32"  # Groen
+    elif val <= (min_green - 1.6):
+        bg = "#c62828"  # Rood
     else:
-        bg = "#ef6c00"
+        bg = "#ef6c00"  # Oranje
 
     return f'<span style="background-color:{bg}; color:#ffffff; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{label_prefix}{val}/10</span>'
 
@@ -128,12 +128,12 @@ if "scan_results_df" in st.session_state:
     
     display_df = scan_df[[
         "Ticker", "Koers", "Master AI Score", "Signaal", 
-        "M1 Score", "M2 Score", "M3 Score", 
-        "M1 ML Kans", "M2 ML Prob", "M3 Ensemble", "M3 LSTM Δ"
+        "AI-TA-Score", "SST Score", "AI Combi Score", 
+        "AI-TA Kans", "SST Kans", "M3 Ensemble", "M3 LSTM Δ"
     ]].copy()
 
-    # Styling voor de tabel: Scores >= 6.0 worden groen
-    def highlight_scores(val):
+    # Standaard scores: Groen >= 6.0
+    def highlight_standard_scores(val):
         try:
             v = float(val)
             if v >= 6.0:
@@ -145,7 +145,20 @@ if "scan_results_df" in st.session_state:
         except (ValueError, TypeError):
             return ''
 
-    # Styling voor de tabel: ML Kansen > 55% worden groen
+    # SST Score: Pas groen Boven 6.9 (dus >= 7.0)
+    def highlight_sst_score(val):
+        try:
+            v = float(val)
+            if v > 6.9:
+                return 'background-color: rgba(46, 125, 50, 0.35); font-weight: bold;'
+            elif v < 5.0:
+                return 'background-color: rgba(198, 40, 40, 0.35); font-weight: bold;'
+            else:
+                return 'background-color: rgba(239, 108, 0, 0.25);'
+        except (ValueError, TypeError):
+            return ''
+
+    # ML Kansen > 55%
     def highlight_probs(val):
         pct = parse_pct_value(val)
         if pct is None:
@@ -166,8 +179,9 @@ if "scan_results_df" in st.session_state:
             return 'background-color: rgba(239, 108, 0, 0.3);'
 
     styled_df = display_df.style\
-        .map(highlight_scores, subset=["Master AI Score", "M1 Score", "M2 Score", "M3 Score"])\
-        .map(highlight_probs, subset=["M1 ML Kans", "M2 ML Prob", "M3 Ensemble"])\
+        .map(highlight_standard_scores, subset=["Master AI Score", "AI-TA-Score", "AI Combi Score"])\
+        .map(highlight_sst_score, subset=["SST Score"])\
+        .map(highlight_probs, subset=["AI-TA Kans", "SST Kans", "M3 Ensemble"])\
         .map(highlight_signal_col, subset=["Signaal"])
 
     st.dataframe(styled_df, use_container_width=True)
@@ -197,11 +211,11 @@ if "scan_results_df" in st.session_state:
             col_t.markdown(f"### **{row['Ticker']}**\n**${row['Koers']}**")
             col_sig.markdown(f"**Signaal:**<br>{row['Signaal']}", unsafe_allow_html=True)
             
-            # M1, M2 en M3 tonen nu hun Score én hun ML-Kans (groen indien > 55%)
-            col_m1.markdown(f"M1 Pattern<br>{get_score_badge(row['M1 Score'])}<br><small>{get_prob_badge(row['M1 ML Kans'], 'ML')}</small>", unsafe_allow_html=True)
-            col_m2.markdown(f"M2 Flow/TA<br>{get_score_badge(row['M2 Score'])}<br><small>{get_prob_badge(row['M2 ML Prob'], 'ML')}</small>", unsafe_allow_html=True)
-            col_m3.markdown(f"M3 LSTM/ML<br>{get_score_badge(row['M3 Score'])}<br><small>{get_prob_badge(row['M3 Ensemble'], 'Ens')}</small>", unsafe_allow_html=True)
-            col_mast.markdown(f"🎯 **Master Score**<br>{get_score_badge(row['Master AI Score'])}", unsafe_allow_html=True)
+            # Card badges met de nieuwe benamingen
+            col_m1.markdown(f"AI-TA Pattern<br>{get_score_badge(row['AI-TA-Score'], min_green=6.0)}<br><small>{get_prob_badge(row['AI-TA Kans'], 'Kans')}</small>", unsafe_allow_html=True)
+            col_m2.markdown(f"SST Flow/TA<br>{get_score_badge(row['SST Score'], min_green=7.0)}<br><small>{get_prob_badge(row['SST Kans'], 'Kans')}</small>", unsafe_allow_html=True)
+            col_m3.markdown(f"AI Combi<br>{get_score_badge(row['AI Combi Score'], min_green=6.0)}<br><small>{get_prob_badge(row['M3 Ensemble'], 'Ens')}</small>", unsafe_allow_html=True)
+            col_mast.markdown(f"🎯 **Master Score**<br>{get_score_badge(row['Master AI Score'], min_green=6.0)}", unsafe_allow_html=True)
 
             if col_act.button(f"📊 Details", key=f"btn_{row['Ticker']}_{idx}", use_container_width=True):
                 st.session_state.selected_ticker = row["Ticker"]
@@ -222,11 +236,11 @@ if res:
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Master AI Score", f"{res['Master AI Score']} / 10", res["Signaal"])
-    c2.metric("Methode 1 (Options & Sentiment)", f"{res['M1 Score']}/10", f"ML Prob: {res['M1 ML Kans']}")
-    c3.metric("Methode 2 (Money Flow & TA)", f"{res['M2 Score']}/10", f"ML Prob: {res['M2 ML Prob']}")
-    c4.metric("Methode 3 (LSTM + Ensemble)", f"{res['M3 Score']}/10", f"LSTM Δ: {res['M3 LSTM Δ']}")
+    c2.metric("AI-TA-Score (Options & Sentiment)", f"{res['AI-TA-Score']}/10", f"AI-TA Kans: {res['AI-TA Kans']}")
+    c3.metric("SST Score (Money Flow & TA)", f"{res['SST Score']}/10", f"SST Kans: {res['SST Kans']}")
+    c4.metric("AI Combi Score (LSTM + Ensemble)", f"{res['AI Combi Score']}/10", f"LSTM Δ: {res['M3 LSTM Δ']}")
 
-    tab_grafiek, tab_m3_details = st.tabs(["📊 Technische Grafiek", "🧠 Methode 3 (PyTorch LSTM & Ensemble ML)"])
+    tab_grafiek, tab_m3_details = st.tabs(["📊 Technische Grafiek", "🧠 AI Combi Details (PyTorch LSTM & Ensemble ML)"])
 
     with tab_grafiek:
         df = m1["df"]
