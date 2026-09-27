@@ -105,7 +105,7 @@ def get_prob_badge(val_str, label=""):
 
     return f'<span style="background-color:{bg}; color:#ffffff; padding: 2px 6px; border-radius: 4px; font-weight: bold;">{label}: {val_str}</span>'
 
-# Badge voor Card View op basis van score (SST Score heeft drempel van > 6.9)
+# Badge voor Card View op basis van score
 def get_score_badge(score, label_prefix="", min_green=6.0):
     try:
         val = float(score)
@@ -114,7 +114,7 @@ def get_score_badge(score, label_prefix="", min_green=6.0):
 
     if val >= min_green:
         bg = "#2e7d32"  # Groen
-    elif val <= (min_green - 1.6):
+    elif val <= (min_green - 1.6 if min_green <= 6.0 else 4.9):
         bg = "#c62828"  # Rood
     else:
         bg = "#ef6c00"  # Oranje
@@ -145,8 +145,8 @@ if "scan_results_df" in st.session_state:
         except (ValueError, TypeError):
             return ''
 
-    # SST Score: Pas groen Boven 6.9 (dus >= 7.0)
-    def highlight_sst_score(val):
+    # AI-TA Score & SST Score: Pas groen Boven 6.9 (dus >= 7.0)
+    def highlight_strict_score(val):
         try:
             v = float(val)
             if v > 6.9:
@@ -179,8 +179,8 @@ if "scan_results_df" in st.session_state:
             return 'background-color: rgba(239, 108, 0, 0.3);'
 
     styled_df = display_df.style\
-        .map(highlight_standard_scores, subset=["Master AI Score", "AI-TA-Score", "AI Combi Score"])\
-        .map(highlight_sst_score, subset=["SST Score"])\
+        .map(highlight_standard_scores, subset=["Master AI Score", "AI Combi Score"])\
+        .map(highlight_strict_score, subset=["AI-TA-Score", "SST Score"])\
         .map(highlight_probs, subset=["AI-TA Kans", "SST Kans", "M3 Ensemble"])\
         .map(highlight_signal_col, subset=["Signaal"])
 
@@ -211,8 +211,8 @@ if "scan_results_df" in st.session_state:
             col_t.markdown(f"### **{row['Ticker']}**\n**${row['Koers']}**")
             col_sig.markdown(f"**Signaal:**<br>{row['Signaal']}", unsafe_allow_html=True)
             
-            # Card badges met de nieuwe benamingen
-            col_m1.markdown(f"AI-TA Pattern<br>{get_score_badge(row['AI-TA-Score'], min_green=6.0)}<br><small>{get_prob_badge(row['AI-TA Kans'], 'Kans')}</small>", unsafe_allow_html=True)
+            # Card badges (AI-TA en SST drempel min_green=7.0)
+            col_m1.markdown(f"AI-TA Pattern<br>{get_score_badge(row['AI-TA-Score'], min_green=7.0)}<br><small>{get_prob_badge(row['AI-TA Kans'], 'Kans')}</small>", unsafe_allow_html=True)
             col_m2.markdown(f"SST Flow/TA<br>{get_score_badge(row['SST Score'], min_green=7.0)}<br><small>{get_prob_badge(row['SST Kans'], 'Kans')}</small>", unsafe_allow_html=True)
             col_m3.markdown(f"AI Combi<br>{get_score_badge(row['AI Combi Score'], min_green=6.0)}<br><small>{get_prob_badge(row['M3 Ensemble'], 'Ens')}</small>", unsafe_allow_html=True)
             col_mast.markdown(f"🎯 **Master Score**<br>{get_score_badge(row['Master AI Score'], min_green=6.0)}", unsafe_allow_html=True)
