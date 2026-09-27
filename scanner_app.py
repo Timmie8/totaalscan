@@ -40,9 +40,9 @@ def run_full_combined_scan(ticker):
         "Koers": m1_res["Koers"],
         "Master AI Score": master_score,
         "Signaal": signal,
-        "M1 Score": f"{m1_score_norm}/10",
-        "M2 Score": f"{m2_score}/10",
-        "M3 Score": f"{m3_score}/10",
+        "M1 Score": m1_score_norm,
+        "M2 Score": m2_score,
+        "M3 Score": m3_score,
         "M1 ML Kans": m1_res["M1_ML_Kans"],
         "M2 ML Prob": m2_res["M2_ML_Prob"] if m2_res else "N/A",
         "M3 Ensemble": m3_res["Ensemble_Prob"] if m3_res else "N/A",
@@ -59,7 +59,7 @@ scan_btn = st.sidebar.button("🚀 Start 3-in-1 Multi-Scan", type="primary", use
 if scan_btn or "scan_results_df" not in st.session_state:
     tickers_to_scan = [t.strip().upper() for t in scan_input.replace(',', ' ').split() if t.strip()]
     
-    with st.spinner(f"Scannen van {len(tickers_to_scan)} aandelen via Methode 1, 2 en 3 (PyTorch ML/DL)..."):
+    with st.spinner(f"Scannen van {len(tickers_to_scan)} aandelen via Methode 1, 2 en 3..."):
         results = []
         progress_bar = st.progress(0)
         
@@ -77,6 +77,25 @@ if scan_btn or "scan_results_df" not in st.session_state:
             df_res = pd.DataFrame(results).sort_values(by="Master AI Score", ascending=False).reset_index(drop=True)
             st.session_state.scan_results_df = df_res
 
+# Helper functie voor kleurcode HTML op basis van score (1-10)
+def get_score_badge(score, label_prefix=""):
+    try:
+        val = float(score)
+    except (ValueError, TypeError):
+        val = 5.0
+
+    if val >= 6.0:
+        bg = "#2e7d32"  # Groen
+        color = "#ffffff"
+    elif val <= 4.4:
+        bg = "#c62828"  # Rood
+        color = "#ffffff"
+    else:
+        bg = "#ef6c00"  # Oranje
+        color = "#ffffff"
+
+    return f'<span style="background-color:{bg}; color:{color}; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{label_prefix}{val}/10</span>'
+
 if "scan_results_df" in st.session_state:
     scan_df = st.session_state.scan_results_df
 
@@ -88,63 +107,70 @@ if "scan_results_df" in st.session_state:
         "M1 ML Kans", "M2 ML Prob", "M3 Ensemble", "M3 LSTM Δ"
     ]].copy()
 
-    # Functie om de rijen van de tabel een groene/rode/oranje achtergrond te geven
-    def highlight_signal(row):
-        sig = row["Signaal"]
-        if "BULLISH" in sig:
-            return ['background-color: rgba(46, 125, 50, 0.25); color: inherit;'] * len(row)
-        elif "BEARISH" in sig:
-            return ['background-color: rgba(198, 40, 40, 0.25); color: inherit;'] * len(row)
-        else:
-            return ['background-color: rgba(239, 108, 0, 0.15); color: inherit;'] * len(row)
+    # Styling functie per kolom voor de tabel
+    def highlight_scores(val):
+        try:
+            v = float(val)
+            if v >= 6.0:
+                return 'background-color: rgba(46, 125, 50, 0.35); font-weight: bold;'
+            elif v <= 4.4:
+                return 'background-color: rgba(198, 40, 40, 0.35); font-weight: bold;'
+            else:
+                return 'background-color: rgba(239, 108, 0, 0.25);'
+        except (ValueError, TypeError):
+            return ''
 
-    styled_df = display_df.style.apply(highlight_signal, axis=1)
+    def highlight_signal_col(val):
+        if "BULLISH" in str(val):
+            return 'background-color: rgba(46, 125, 50, 0.4); font-weight: bold;'
+        elif "BEARISH" in str(val):
+            return 'background-color: rgba(198, 40, 40, 0.4); font-weight: bold;'
+        else:
+            return 'background-color: rgba(239, 108, 0, 0.3);'
+
+    styled_df = display_df.style\
+        .map(highlight_scores, subset=["Master AI Score", "M1 Score", "M2 Score", "M3 Score"])\
+        .map(highlight_signal_col, subset=["Signaal"])
+
     st.dataframe(styled_df, use_container_width=True)
 
     st.markdown("---")
-    st.markdown("### 🔍 Interactieve Card View")
+    st.markdown("### 🔍 Interactieve Card View (Scores per methode gekleurd)")
 
-    # Styling voor de losse kaarten
     for idx, row in scan_df.iterrows():
+        # Bepaal randkleur van de hele kaart op basis van het totale signaal
         sig = row["Signaal"]
-        
-        # Bepaal de achtergrondkleur en rand op basis van Bullish/Bearish
         if "BULLISH" in sig:
-            bg_color = "rgba(46, 125, 50, 0.15)"
-            border_color = "#2e7d32"
+            card_border = "#2e7d32"
+            card_bg = "rgba(46, 125, 50, 0.08)"
         elif "BEARISH" in sig:
-            bg_color = "rgba(198, 40, 40, 0.15)"
-            border_color = "#c62828"
+            card_border = "#c62828"
+            card_bg = "rgba(198, 40, 40, 0.08)"
         else:
-            bg_color = "rgba(239, 108, 0, 0.10)"
-            border_color = "#ef6c00"
+            card_border = "#ef6c00"
+            card_bg = "rgba(239, 108, 0, 0.05)"
 
-        # Container met gekleurde achtergrond
-        card_html = f"""
-        <div style="
-            background-color: {bg_color};
-            border-left: 6px solid {border_color};
-            border-radius: 8px;
-            padding: 10px 15px;
-            margin-bottom: 10px;
-        ">
-        """
-        st.markdown(card_html, unsafe_allow_html=True)
+        with st.container():
+            st.markdown(
+                f'<div style="border-left: 6px solid {card_border}; background-color: {card_bg}; padding: 12px; border-radius: 6px; margin-bottom: 12px;">',
+                unsafe_allow_html=True
+            )
+            col_t, col_sig, col_m1, col_m2, col_m3, col_mast, col_act = st.columns([1.0, 1.2, 1.3, 1.3, 1.3, 1.4, 1.3])
 
-        col_t, col_sig, col_m1, col_m2, col_m3, col_mast, col_act = st.columns([1.0, 1.2, 1.2, 1.2, 1.2, 1.2, 1.3])
+            col_t.markdown(f"### **{row['Ticker']}**\n**${row['Koers']}**")
+            col_sig.markdown(f"**Signaal:**<br>{row['Signaal']}", unsafe_allow_html=True)
+            
+            # Methode 1, 2, 3 met elk hun eigen gekleurde badge
+            col_m1.markdown(f"M1 Pattern<br>{get_score_badge(row['M1 Score'])}", unsafe_allow_html=True)
+            col_m2.markdown(f"M2 Flow/TA<br>{get_score_badge(row['M2 Score'])}", unsafe_allow_html=True)
+            col_m3.markdown(f"M3 LSTM/ML<br>{get_score_badge(row['M3 Score'])}", unsafe_allow_html=True)
+            col_mast.markdown(f"🎯 **Master Score**<br>{get_score_badge(row['Master AI Score'])}", unsafe_allow_html=True)
 
-        col_t.markdown(f"**{row['Ticker']}**<br><small>${row['Koers']}</small>", unsafe_allow_html=True)
-        col_sig.markdown(row["Signaal"])
-        col_m1.markdown(f"M1 Pattern<br>**{row['M1 Score']}**", unsafe_allow_html=True)
-        col_m2.markdown(f"M2 Flow/TA<br>**{row['M2 Score']}**", unsafe_allow_html=True)
-        col_m3.markdown(f"M3 LSTM/ML<br>**{row['M3 Score']}**", unsafe_allow_html=True)
-        col_mast.markdown(f"🎯 **{row['Master AI Score']} / 10**")
+            if col_act.button(f"📊 Details", key=f"btn_{row['Ticker']}_{idx}", use_container_width=True):
+                st.session_state.selected_ticker = row["Ticker"]
+                st.rerun()
 
-        if col_act.button(f"📊 Analyseer {row['Ticker']}", key=f"btn_{row['Ticker']}_{idx}"):
-            st.session_state.selected_ticker = row["Ticker"]
-            st.rerun()
-
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
 
 st.markdown("---")
 ticker = st.session_state.selected_ticker
@@ -159,9 +185,9 @@ if res:
 
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Master AI Score", f"{res['Master AI Score']} / 10", res["Signaal"])
-    c2.metric("Methode 1 (Options & Sentiment)", res["M1 Score"], f"ML Prob: {res['M1 ML Kans']}")
-    c3.metric("Methode 2 (Money Flow & TA)", res["M2 Score"], f"ML Prob: {res['M2 ML Prob']}")
-    c4.metric("Methode 3 (LSTM + Ensemble)", res["M3 Score"], f"LSTM Δ: {res['M3 LSTM Δ']}")
+    c2.metric("Methode 1 (Options & Sentiment)", f"{res['M1 Score']}/10", f"ML Prob: {res['M1 ML Kans']}")
+    c3.metric("Methode 2 (Money Flow & TA)", f"{res['M2 Score']}/10", f"ML Prob: {res['M2 ML Prob']}")
+    c4.metric("Methode 3 (LSTM + Ensemble)", f"{res['M3 Score']}/10", f"LSTM Δ: {res['M3 LSTM Δ']}")
 
     tab_grafiek, tab_m3_details = st.tabs(["📊 Technische Grafiek", "🧠 Methode 3 (PyTorch LSTM & Ensemble ML)"])
 
