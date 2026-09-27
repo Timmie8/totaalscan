@@ -77,7 +77,35 @@ if scan_btn or "scan_results_df" not in st.session_state:
             df_res = pd.DataFrame(results).sort_values(by="Master AI Score", ascending=False).reset_index(drop=True)
             st.session_state.scan_results_df = df_res
 
-# Helper functie voor kleurcode HTML op basis van score (1-10)
+# Helper voor het omzetten van %-strings ("58.2%") of floats naar getallen (0-100)
+def parse_pct_value(val):
+    try:
+        if isinstance(val, str):
+            val_clean = val.replace('%', '').strip()
+            v = float(val_clean)
+            if v <= 1.0 and '%' not in val:
+                v = v * 100
+            return v
+        return float(val) * 100 if val <= 1.0 else float(val)
+    except (ValueError, TypeError):
+        return None
+
+# Badge voor Card View op basis van percentage (groen boven 55%)
+def get_prob_badge(val_str, label=""):
+    pct = parse_pct_value(val_str)
+    if pct is None:
+        return f"<span>{label}: N/A</span>"
+    
+    if pct > 55.0:
+        bg = "#2e7d32"  # Groen
+    elif pct < 45.0:
+        bg = "#c62828"  # Rood
+    else:
+        bg = "#ef6c00"  # Oranje
+
+    return f'<span style="background-color:{bg}; color:#ffffff; padding: 2px 6px; border-radius: 4px; font-weight: bold;">{label}: {val_str}</span>'
+
+# Badge voor Card View op basis van score (groen vanaf 6.0)
 def get_score_badge(score, label_prefix=""):
     try:
         val = float(score)
@@ -85,16 +113,13 @@ def get_score_badge(score, label_prefix=""):
         val = 5.0
 
     if val >= 6.0:
-        bg = "#2e7d32"  # Groen
-        color = "#ffffff"
+        bg = "#2e7d32"
     elif val <= 4.4:
-        bg = "#c62828"  # Rood
-        color = "#ffffff"
+        bg = "#c62828"
     else:
-        bg = "#ef6c00"  # Oranje
-        color = "#ffffff"
+        bg = "#ef6c00"
 
-    return f'<span style="background-color:{bg}; color:{color}; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{label_prefix}{val}/10</span>'
+    return f'<span style="background-color:{bg}; color:#ffffff; padding: 3px 8px; border-radius: 4px; font-weight: bold;">{label_prefix}{val}/10</span>'
 
 if "scan_results_df" in st.session_state:
     scan_df = st.session_state.scan_results_df
@@ -107,7 +132,7 @@ if "scan_results_df" in st.session_state:
         "M1 ML Kans", "M2 ML Prob", "M3 Ensemble", "M3 LSTM Δ"
     ]].copy()
 
-    # Styling functie per kolom voor de tabel
+    # Styling voor de tabel: Scores >= 6.0 worden groen
     def highlight_scores(val):
         try:
             v = float(val)
@@ -120,6 +145,18 @@ if "scan_results_df" in st.session_state:
         except (ValueError, TypeError):
             return ''
 
+    # Styling voor de tabel: ML Kansen > 55% worden groen
+    def highlight_probs(val):
+        pct = parse_pct_value(val)
+        if pct is None:
+            return ''
+        if pct > 55.0:
+            return 'background-color: rgba(46, 125, 50, 0.35); font-weight: bold;'
+        elif pct < 45.0:
+            return 'background-color: rgba(198, 40, 40, 0.35); font-weight: bold;'
+        else:
+            return 'background-color: rgba(239, 108, 0, 0.25);'
+
     def highlight_signal_col(val):
         if "BULLISH" in str(val):
             return 'background-color: rgba(46, 125, 50, 0.4); font-weight: bold;'
@@ -130,15 +167,15 @@ if "scan_results_df" in st.session_state:
 
     styled_df = display_df.style\
         .map(highlight_scores, subset=["Master AI Score", "M1 Score", "M2 Score", "M3 Score"])\
+        .map(highlight_probs, subset=["M1 ML Kans", "M2 ML Prob", "M3 Ensemble"])\
         .map(highlight_signal_col, subset=["Signaal"])
 
     st.dataframe(styled_df, use_container_width=True)
 
     st.markdown("---")
-    st.markdown("### 🔍 Interactieve Card View (Scores per methode gekleurd)")
+    st.markdown("### 🔍 Interactieve Card View (Scores & ML-Kansen gekleurd)")
 
     for idx, row in scan_df.iterrows():
-        # Bepaal randkleur van de hele kaart op basis van het totale signaal
         sig = row["Signaal"]
         if "BULLISH" in sig:
             card_border = "#2e7d32"
@@ -155,15 +192,15 @@ if "scan_results_df" in st.session_state:
                 f'<div style="border-left: 6px solid {card_border}; background-color: {card_bg}; padding: 12px; border-radius: 6px; margin-bottom: 12px;">',
                 unsafe_allow_html=True
             )
-            col_t, col_sig, col_m1, col_m2, col_m3, col_mast, col_act = st.columns([1.0, 1.2, 1.3, 1.3, 1.3, 1.4, 1.3])
+            col_t, col_sig, col_m1, col_m2, col_m3, col_mast, col_act = st.columns([1.0, 1.2, 1.4, 1.4, 1.4, 1.3, 1.2])
 
             col_t.markdown(f"### **{row['Ticker']}**\n**${row['Koers']}**")
             col_sig.markdown(f"**Signaal:**<br>{row['Signaal']}", unsafe_allow_html=True)
             
-            # Methode 1, 2, 3 met elk hun eigen gekleurde badge
-            col_m1.markdown(f"M1 Pattern<br>{get_score_badge(row['M1 Score'])}", unsafe_allow_html=True)
-            col_m2.markdown(f"M2 Flow/TA<br>{get_score_badge(row['M2 Score'])}", unsafe_allow_html=True)
-            col_m3.markdown(f"M3 LSTM/ML<br>{get_score_badge(row['M3 Score'])}", unsafe_allow_html=True)
+            # M1, M2 en M3 tonen nu hun Score én hun ML-Kans (groen indien > 55%)
+            col_m1.markdown(f"M1 Pattern<br>{get_score_badge(row['M1 Score'])}<br><small>{get_prob_badge(row['M1 ML Kans'], 'ML')}</small>", unsafe_allow_html=True)
+            col_m2.markdown(f"M2 Flow/TA<br>{get_score_badge(row['M2 Score'])}<br><small>{get_prob_badge(row['M2 ML Prob'], 'ML')}</small>", unsafe_allow_html=True)
+            col_m3.markdown(f"M3 LSTM/ML<br>{get_score_badge(row['M3 Score'])}<br><small>{get_prob_badge(row['M3 Ensemble'], 'Ens')}</small>", unsafe_allow_html=True)
             col_mast.markdown(f"🎯 **Master Score**<br>{get_score_badge(row['Master AI Score'])}", unsafe_allow_html=True)
 
             if col_act.button(f"📊 Details", key=f"btn_{row['Ticker']}_{idx}", use_container_width=True):
